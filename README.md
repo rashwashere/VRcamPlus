@@ -66,13 +66,41 @@ If you are in or on a vehicle, an invisible bike will spawn. The camera ped ride
     
 ## Buttons
 
-| Key | Function              |
-|-----|-----------------------|
-| L   | Activate              |
-| J   | Zoom out              |
-| K   | Zoom in               |
-| I   | Toggle Rule of Thirds |
-| H   | Toggle Aspect Ratio   |
+| Key                     | Function                              |
+|-------------------------|---------------------------------------|
+| L                       | Activate / Toggle UI & Viewfinder     |
+| F5                      | Show / Hide Rat                       |
+| F10                     | Lock / Unlock All Controls            |
+| Ctrl+F10                | Save Preset                           |
+| Ctrl++                  | Cycle to Next Preset                  |
+| Ctrl+-                  | Cycle to Previous Preset              |
+
+| Key                     | Function                              |
+|-------------------------|---------------------------------------|
+| J                       | Viewfinder Zoom Out                   |
+| K                       | Viewfinder Zoom In                    |
+| U                       | Toggle Rule of Thirds Grid            |
+| H                       | Change Aspect Ratio                   |
+
+| Key                     | Function                              |
+|-------------------------|---------------------------------------|
+| LMB / RMB               | Zoom In / Out (Click Mode)            |
+| Mouse Wheel             | Zoom In / Out (Scroll Mode)           |
+| Ctrl+CapsLock           | Toggle Zoom Mode (Scroll / Click)     |
+| Ctrl+Middle Mouse       | Reset Zoom to Default                 |
+| Ctrl+1                  | Lock / Unlock Zoom IN at current FOV  |
+| Ctrl+2                  | Lock / Unlock Zoom OUT at current FOV |
+| Shift+Wheel / Shift+LMB | Adjust Zoom IN Smoothness             |
+| Ctrl+Wheel / Ctrl+RMB   | Adjust Zoom OUT Smoothness            |
+
+| Key                     | Function                              |
+|-------------------------|---------------------------------------|
+| CapsLock                | Toggle Flashlight                     |
+| Ctrl+3                  | Lock / Unlock Flashlight Movement     |
+| Up / Down               | Move Flashlight Forward / Back        |
+| Left / Right            | Move Flashlight Left / Right          |
+| PageUp / PageDown       | Move Flashlight Up / Down             |
+| Ctrl+Up / Ctrl+Down     | Rotate Flashlight Pitch               |
 
 ## Configuration
 
