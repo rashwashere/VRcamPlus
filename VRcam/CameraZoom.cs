@@ -8,74 +8,162 @@ namespace VRCam
 {
     public class CameraZoom : Script
     {
-        // Camera zoom variables
-        private float targetFov = 68f; // Default FOV - 68 as initial
-        private float currentFov = 68f; // Current FOV for smoothing
-        private float defaultFov = 68f; // Reset value
-        private float minFov = 10f; // Max zoom in
-        private float maxFov = 90f; // Max zoom out
-        private float zoomInSmoothness = 0.15f; // Smoothness when zooming IN (decreasing FOV)
-        private float zoomOutSmoothness = 0.15f; // Smoothness when zooming OUT (increasing FOV)
-        private float zoomStep = 2f; // How much each scroll changes zoom
+        private float targetFov = 68f;
+        private float currentFov = 68f;
+        private float defaultFov = 68f;
+        private float minFov = 10f;
+        private float maxFov = 90f;
+        private float zoomInSmoothness = 0.15f;
+        private float zoomOutSmoothness = 0.15f;
+        private float zoomStep = 2f;
         
-        // GUI control - synced with viewfinder (starts hidden)
-        private bool showGUI = false;
-        public static bool ZoomEnabled = true; // Static so AttachRatToCamera can lock/unlock zoom
+        public static bool ZoomEnabled = true;
         
-        // Mouse wheel tracking
         private int lastMouseWheel = 0;
         
-        // Control mode: false = mouse wheel, true = left/right click
         private bool useClickMode = false;
-        public static bool UseClickMode { get; private set; } = false; // Public static for GUI access
+        public static bool UseClickMode { get; private set; } = false;
+
+        // Soft-lock settings
+        private bool zoomInLocked = false;
+        private bool zoomOutLocked = false;
+        private float softMinFov = 45f;
+        private float softMaxFov = 60f;
+
+        // Public properties for ViewfinderText to access
+        public static float CurrentFOV { get; private set; } = 68f;
+        public static float ZoomInSpeed { get; private set; } = 0.15f;
+        public static float ZoomOutSpeed { get; private set; } = 0.15f;
+        public static float MinFOV { get; private set; } = 10f;
+        public static float MaxFOV { get; private set; } = 90f;
+        public static bool ZoomInLocked { get; private set; } = false;
+        public static bool ZoomOutLocked { get; private set; } = false;
+        public static float SoftMinFOV { get; private set; } = 45f;
+        public static float SoftMaxFOV { get; private set; } = 60f;
 
         public CameraZoom()
         {
             Tick += OnTick;
             KeyDown += OnKeyDown;
             
-            // Get initial FOV
-            Camera initCam = World.RenderingCamera;
-            if (initCam != null)
-            {
-                currentFov = initCam.FieldOfView;
-                targetFov = currentFov;
-            }
+            // Load from configuration
+            currentFov = VRCamModConfiguration.CurrentFOV;
+            targetFov = currentFov;
+            zoomInSmoothness = VRCamModConfiguration.ZoomInSmoothness;
+            zoomOutSmoothness = VRCamModConfiguration.ZoomOutSmoothness;
+            useClickMode = VRCamModConfiguration.UseClickMode;
+            zoomInLocked = VRCamModConfiguration.ZoomInLocked;
+            zoomOutLocked = VRCamModConfiguration.ZoomOutLocked;
+            softMinFov = VRCamModConfiguration.SoftMinFOV;
+            softMaxFov = VRCamModConfiguration.SoftMaxFOV;
+            
+            UseClickMode = useClickMode;
+            CurrentFOV = currentFov;
+            ZoomInSpeed = zoomInSmoothness;
+            ZoomOutSpeed = zoomOutSmoothness;
+            MinFOV = minFov;
+            MaxFOV = maxFov;
+            ZoomInLocked = zoomInLocked;
+            ZoomOutLocked = zoomOutLocked;
+            SoftMinFOV = softMinFov;
+            SoftMaxFOV = softMaxFov;
+        }
+
+        // Set to true by RefreshFromConfig() so OnTick re-reads smoothness next frame
+        private static bool pendingRefresh = false;
+
+        /// <summary>
+        /// Called after a preset is loaded to push the new smoothness/lock values into the live instance.
+        /// </summary>
+        public static void RefreshFromConfig()
+        {
+            pendingRefresh = true;
+        }
+
+        private void SaveToConfig()
+        {
+            VRCamModConfiguration.CurrentFOV = currentFov;
+            VRCamModConfiguration.ZoomInSmoothness = zoomInSmoothness;
+            VRCamModConfiguration.ZoomOutSmoothness = zoomOutSmoothness;
+            VRCamModConfiguration.UseClickMode = useClickMode;
+            VRCamModConfiguration.ZoomInLocked = zoomInLocked;
+            VRCamModConfiguration.ZoomOutLocked = zoomOutLocked;
+            VRCamModConfiguration.SoftMinFOV = softMinFov;
+            VRCamModConfiguration.SoftMaxFOV = softMaxFov;
         }
 
         private void OnKeyDown(object sender, KeyEventArgs e)
         {
-            // Check if any modifier key is pressed
-            bool modifierPressed = e.Control || e.Shift || e.Alt;
+            if (!ZoomEnabled) return;
 
-            // L key toggles GUI visibility (synced with viewfinder and rat GUI) (no modifiers)
-            if (e.KeyCode == Keys.L && !modifierPressed)
-            {
-                showGUI = !showGUI;
-            }
-            // U key also toggles GUI (for consistency with AttachRatToCamera) (no modifiers)
-            else if (e.KeyCode == Keys.U && !modifierPressed)
-            {
-                showGUI = !showGUI;
-            }
-            // Ctrl+CapsLock toggles zoom control mode (only when zoom is enabled, only Ctrl)
-            else if (e.Control && !e.Shift && !e.Alt && e.KeyCode == Keys.CapsLock && ZoomEnabled)
+            // Ctrl+CapsLock = toggle zoom mode (click vs scroll)
+            if (e.Control && !e.Shift && !e.Alt && e.KeyCode == KeyBinds.ZoomModeToggle && KeyBinds.ZoomModeToggle_Ctrl)
             {
                 useClickMode = !useClickMode;
-                UseClickMode = useClickMode; // Update public static property
+                UseClickMode = useClickMode;
+                SaveToConfig();
                 string mode = useClickMode ? "Left/Right Click" : "Mouse Wheel";
                 GTA.UI.Screen.ShowSubtitle($"Zoom Mode: {mode}", 2000);
             }
-
+            // Ctrl+1 = lock/unlock zoom IN at current FOV
+            else if (e.Control && !e.Shift && !e.Alt && e.KeyCode == KeyBinds.ZoomInLock && KeyBinds.ZoomInLock_Ctrl)
+            {
+                if (!zoomInLocked)
+                {
+                    softMinFov = currentFov;
+                    SoftMinFOV = softMinFov;
+                }
+                zoomInLocked = !zoomInLocked;
+                ZoomInLocked = zoomInLocked;
+                SaveToConfig();
+                string status = zoomInLocked ? "LOCKED" : "UNLOCKED";
+                int minMm = VRCamModConfiguration.FOVToMillimeter(softMinFov);
+                GTA.UI.Screen.ShowSubtitle($"Zoom IN {status} at {softMinFov:F1}° ({minMm}mm)", 2000);
+            }
+            // Ctrl+2 = lock/unlock zoom OUT at current FOV
+            else if (e.Control && !e.Shift && !e.Alt && e.KeyCode == KeyBinds.ZoomOutLock && KeyBinds.ZoomOutLock_Ctrl)
+            {
+                if (!zoomOutLocked)
+                {
+                    softMaxFov = currentFov;
+                    SoftMaxFOV = softMaxFov;
+                }
+                zoomOutLocked = !zoomOutLocked;
+                ZoomOutLocked = zoomOutLocked;
+                SaveToConfig();
+                string status = zoomOutLocked ? "LOCKED" : "UNLOCKED";
+                int maxMm = VRCamModConfiguration.FOVToMillimeter(softMaxFov);
+                GTA.UI.Screen.ShowSubtitle($"Zoom OUT {status} at {softMaxFov:F1}° ({maxMm}mm)", 2000);
+            }
         }
 
         private void OnTick(object sender, EventArgs e)
         {
-            // Only process zoom if enabled (not locked by F10)
             if (!ZoomEnabled)
                 return;
+
+            // A preset was just loaded — pull the new values into our live fields
+            if (pendingRefresh)
+            {
+                pendingRefresh = false;
+                zoomInSmoothness = VRCamModConfiguration.ZoomInSmoothness;
+                zoomOutSmoothness = VRCamModConfiguration.ZoomOutSmoothness;
+                targetFov = VRCamModConfiguration.CurrentFOV;
+                useClickMode = VRCamModConfiguration.UseClickMode;
+                zoomInLocked = VRCamModConfiguration.ZoomInLocked;
+                zoomOutLocked = VRCamModConfiguration.ZoomOutLocked;
+                softMinFov = VRCamModConfiguration.SoftMinFOV;
+                softMaxFov = VRCamModConfiguration.SoftMaxFOV;
+                UseClickMode = useClickMode;
+                ZoomInSpeed = zoomInSmoothness;
+                ZoomOutSpeed = zoomOutSmoothness;
+                ZoomInLocked = zoomInLocked;
+                ZoomOutLocked = zoomOutLocked;
+                SoftMinFOV = softMinFov;
+                SoftMaxFOV = softMaxFov;
+            }
             
-            // Check for Ctrl+MiddleMouse reset
+            // Ctrl+Middle Mouse = reset zoom to default
             if (Game.IsKeyPressed(Keys.ControlKey) && Game.IsControlPressed(GTA.Control.LookBehind))
             {
                 targetFov = defaultFov;
@@ -86,58 +174,69 @@ namespace VRCam
             
             if (useClickMode)
             {
-                // Use left/right click for zoom - CONTINUOUS (hold to zoom)
                 bool ctrlPressed = Game.IsKeyPressed(Keys.ControlKey);
                 bool shiftPressed = Game.IsKeyPressed(Keys.ShiftKey);
                 
-                if (Game.IsControlPressed(GTA.Control.Attack))
+                // Disable in-game attack and aim controls
+                Game.DisableControlThisFrame(GTA.Control.Attack);
+                Game.DisableControlThisFrame(GTA.Control.Aim);
+                Game.DisableControlThisFrame(GTA.Control.MeleeAttackLight);
+                Game.DisableControlThisFrame(GTA.Control.MeleeAttackHeavy);
+                Game.DisableControlThisFrame(GTA.Control.MeleeAttackAlternate);
+                
+                if (Game.IsControlPressed(GTA.Control.Attack)) // LMB
                 {
                     if (shiftPressed && !ctrlPressed)
                     {
-                        // Shift + LMB: Increase zoom IN smoothness (gradual continuous)
+                        // Shift+LMB = zoom IN speed up
                         zoomInSmoothness += 0.001f;
                         zoomInSmoothness = Math.Max(0.01f, Math.Min(1.0f, zoomInSmoothness));
+                        ZoomInSpeed = zoomInSmoothness;
+                    }
+                    else if (ctrlPressed && !shiftPressed)
+                    {
+                        // Ctrl+LMB = zoom OUT speed down
+                        zoomOutSmoothness -= 0.001f;
+                        zoomOutSmoothness = Math.Max(0.01f, Math.Min(1.0f, zoomOutSmoothness));
+                        ZoomOutSpeed = zoomOutSmoothness;
                     }
                     else if (!shiftPressed && !ctrlPressed)
                     {
-                        // Left click held = continuously zoom in
+                        // LMB = zoom in
                         targetFov -= zoomStep * 0.5f;
                         targetFov = Math.Max(minFov, Math.Min(maxFov, targetFov));
                     }
                 }
-                else if (Game.IsControlPressed(GTA.Control.Aim))
+                else if (Game.IsControlPressed(GTA.Control.Aim)) // RMB
                 {
                     if (shiftPressed && !ctrlPressed)
                     {
-                        // Shift + RMB: Decrease zoom IN smoothness (gradual continuous)
+                        // Shift+RMB = zoom IN speed down
                         zoomInSmoothness -= 0.001f;
                         zoomInSmoothness = Math.Max(0.01f, Math.Min(1.0f, zoomInSmoothness));
+                        ZoomInSpeed = zoomInSmoothness;
                     }
                     else if (ctrlPressed && !shiftPressed)
                     {
-                        // Ctrl + RMB: Decrease zoom OUT smoothness (gradual continuous)
-                        zoomOutSmoothness -= 0.001f;
+                        // Ctrl+RMB = zoom OUT speed up
+                        zoomOutSmoothness += 0.001f;
                         zoomOutSmoothness = Math.Max(0.01f, Math.Min(1.0f, zoomOutSmoothness));
+                        ZoomOutSpeed = zoomOutSmoothness;
                     }
                     else if (!shiftPressed && !ctrlPressed)
                     {
-                        // Right click held = continuously zoom out
+                        // RMB = zoom out
                         targetFov += zoomStep * 0.5f;
                         targetFov = Math.Max(minFov, Math.Min(maxFov, targetFov));
                     }
                 }
-                
-                // Add Ctrl+LMB for increasing zoom OUT smoothness
-                if (Game.IsControlPressed(GTA.Control.Attack) && ctrlPressed && !shiftPressed)
-                {
-                    // Ctrl + LMB: Increase zoom OUT smoothness (gradual continuous)
-                    zoomOutSmoothness += 0.001f;
-                    zoomOutSmoothness = Math.Max(0.01f, Math.Min(1.0f, zoomOutSmoothness));
-                }
             }
             else
             {
-                // Use mouse wheel for zoom - DISCRETE (per scroll)
+                // Disable weapon wheel when using scroll wheel for zoom
+                Game.DisableControlThisFrame(GTA.Control.WeaponWheelNext);
+                Game.DisableControlThisFrame(GTA.Control.WeaponWheelPrev);
+                
                 scrollDelta = Game.IsControlPressed(GTA.Control.CursorScrollUp) ? 1 : 
                              Game.IsControlPressed(GTA.Control.CursorScrollDown) ? -1 : 0;
 
@@ -148,21 +247,23 @@ namespace VRCam
 
                     if (shiftPressed && !ctrlPressed)
                     {
-                        // Shift + Scroll: Adjust zoom IN smoothness
+                        // Shift+Scroll = adjust zoom IN speed
                         zoomInSmoothness += scrollDelta * 0.02f;
                         zoomInSmoothness = Math.Max(0.01f, Math.Min(1.0f, zoomInSmoothness));
+                        ZoomInSpeed = zoomInSmoothness;
                         GTA.UI.Screen.ShowSubtitle($"Zoom IN Smoothness: {zoomInSmoothness:F2}", 1000);
                     }
                     else if (ctrlPressed && !shiftPressed)
                     {
-                        // Ctrl + Scroll: Adjust zoom OUT smoothness
+                        // Ctrl+Scroll = adjust zoom OUT speed
                         zoomOutSmoothness += scrollDelta * 0.02f;
                         zoomOutSmoothness = Math.Max(0.01f, Math.Min(1.0f, zoomOutSmoothness));
+                        ZoomOutSpeed = zoomOutSmoothness;
                         GTA.UI.Screen.ShowSubtitle($"Zoom OUT Smoothness: {zoomOutSmoothness:F2}", 1000);
                     }
                     else if (!shiftPressed && !ctrlPressed)
                     {
-                        // Normal scroll: Adjust zoom
+                        // Scroll = zoom
                         targetFov -= scrollDelta * zoomStep;
                         targetFov = Math.Max(minFov, Math.Min(maxFov, targetFov));
                     }
@@ -170,55 +271,29 @@ namespace VRCam
                 lastMouseWheel = scrollDelta;
             }
 
-            // Apply smooth zoom to camera using appropriate smoothness
+            // Apply soft-lock limits
+            if (zoomInLocked && targetFov < softMinFov)
+                targetFov = softMinFov;
+            if (zoomOutLocked && targetFov > softMaxFov)
+                targetFov = softMaxFov;
+
             Camera cam = World.RenderingCamera;
             if (cam != null)
             {
-                // Determine if we're zooming in or out
                 bool zoomingIn = targetFov < currentFov;
                 float activeSmoothness = zoomingIn ? zoomInSmoothness : zoomOutSmoothness;
                 
-                // Smooth interpolation
                 currentFov = Lerp(currentFov, targetFov, activeSmoothness);
                 cam.FieldOfView = currentFov;
-            }
-
-            // Display GUI if enabled
-            if (showGUI)
-            {
-                DisplayZoomInfo();
+                CurrentFOV = currentFov;
+                
+                SaveToConfig();
             }
         }
 
         private float Lerp(float start, float end, float amount)
         {
             return start + (end - start) * amount;
-        }
-
-        private void DisplayZoomInfo()
-        {
-            // Calculate zoom percentage (inverted - lower FOV = more zoom)
-            float zoomPercent = ((maxFov - currentFov) / (maxFov - minFov)) * 100f;
-            
-            // Add camera mode indicator
-            string cameraMode = useClickMode ? "Click" : "Scroll";
-            
-            string info = string.Format("Zoom: {0:F0}%  FOV: {1:F1}  IN: {2:F2}  OUT: {3:F2}  Mode: {4}",
-                                       zoomPercent, currentFov, zoomInSmoothness, zoomOutSmoothness, cameraMode);
-
-            // Draw at top center
-            float textPosX = 0.5f;
-            float textPosY = 0.02f;
-            float textScale = 0.35f;
-
-            Function.Call(Hash.SET_TEXT_FONT, 0);
-            Function.Call(Hash.SET_TEXT_SCALE, textScale, textScale);
-            Function.Call(Hash.SET_TEXT_COLOUR, 255, 255, 153, 255); // Yellow color like aspect ratio warning
-            Function.Call(Hash.SET_TEXT_CENTRE, true);
-
-            Function.Call(Hash.BEGIN_TEXT_COMMAND_DISPLAY_TEXT, "STRING");
-            Function.Call(Hash.ADD_TEXT_COMPONENT_SUBSTRING_PLAYER_NAME, info);
-            Function.Call(Hash.END_TEXT_COMMAND_DISPLAY_TEXT, textPosX, textPosY);
         }
     }
 }
