@@ -60,6 +60,7 @@
     <Compile Include="TraceLog.cs" />
     <Compile Include="VRCamMenu.cs" />
     <Compile Include="VRCamModConfiguration.cs" />
+    <Compile Include="VrCamState.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="AttachRatToCamera.cs" />
     <Compile Include="ViewfinderScript.cs" />
