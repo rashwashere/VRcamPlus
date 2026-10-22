@@ -18,8 +18,16 @@ namespace VRCam
         private bool ruleOfThirdsEnabled = true;
         private ViewfinderText viewFinderText;
 
+        // Bridge for the VRCam menu
+        public static ViewfinderScript Instance { get; private set; }
+        public static bool ViewfinderEnabled { get; private set; } = false;
+        public int ZoomIndexValue { get { return zoomIndex; } }
+        public int AspectIndexValue { get { return aspectIndex; } }
+        public bool GridOn { get { return ruleOfThirdsEnabled; } }
+
         public ViewfinderScript()
         {
+            Instance = this;
             currentBaseHeight = VRCamModConfiguration.PresetHeights[aspectIndex];
             targetBaseHeight = VRCamModConfiguration.PresetHeights[aspectIndex];
 
@@ -28,6 +36,36 @@ namespace VRCam
 
             Tick += OnTick;
             KeyDown += OnKeyDown;
+        }
+
+        // ---------------- menu bridge methods ----------------
+
+        public void Menu_ToggleViewfinder()
+        {
+            viewfinderEnabled = !viewfinderEnabled;
+            ViewfinderEnabled = viewfinderEnabled;
+        }
+
+        public void Menu_SetZoomIndex(int index)
+        {
+            if (index < 0 || index >= VRCamModConfiguration.ZoomLevels.Length)
+                return;
+            zoomIndex = index;
+            targetZoom = VRCamModConfiguration.ZoomLevels[zoomIndex];
+        }
+
+        public void Menu_SetAspectIndex(int index)
+        {
+            if (index < 0 || index >= VRCamModConfiguration.PresetHeights.Length)
+                return;
+            aspectIndex = index;
+            targetBaseHeight = VRCamModConfiguration.PresetHeights[aspectIndex];
+            GTA.UI.Screen.ShowSubtitle("Aspect Ratio: " + VRCamModConfiguration.AspectRatioLabels[aspectIndex], 2000);
+        }
+
+        public void Menu_ToggleGrid()
+        {
+            ruleOfThirdsEnabled = !ruleOfThirdsEnabled;
         }
 
         private void OnTick(object sender, EventArgs e)
@@ -110,11 +148,19 @@ namespace VRCam
 
         private void OnKeyDown(object sender, KeyEventArgs e)
         {
-            if (e.KeyCode == Keys.L) // Press "L" to toggle the viewfinder.
+            if (VRCamMenu.SuppressHotkeys)
+                return;
+
+            if (KeyBinds.StartCamera.Pressed(e)) // the Start key toggles the viewfinder
             {
                 viewfinderEnabled = !viewfinderEnabled;
+                ViewfinderEnabled = viewfinderEnabled;
             }
-            else if (e.KeyCode == Keys.J)
+            else if (!viewfinderEnabled)
+            {
+                // The viewfinder keys do nothing until the viewfinder is shown.
+            }
+            else if (KeyBinds.ViewfinderZoomOut.Pressed(e))
             {
                 if (zoomIndex > 0)
                 {
@@ -122,7 +168,7 @@ namespace VRCam
                     targetZoom = VRCamModConfiguration.ZoomLevels[zoomIndex];
                 }
             }
-            else if (e.KeyCode == Keys.K)
+            else if (KeyBinds.ViewfinderZoomIn.Pressed(e))
             {
                 if (zoomIndex < VRCamModConfiguration.ZoomLevels.Length - 1)
                 {
@@ -130,13 +176,13 @@ namespace VRCam
                     targetZoom = VRCamModConfiguration.ZoomLevels[zoomIndex];
                 }
             }
-            else if (e.KeyCode == Keys.H)
+            else if (KeyBinds.AspectRatio.Pressed(e))
             {
                 aspectIndex = (aspectIndex + 1) % VRCamModConfiguration.PresetHeights.Length;
                 targetBaseHeight = VRCamModConfiguration.PresetHeights[aspectIndex];
                 GTA.UI.Screen.ShowSubtitle("Aspect Ratio: " + VRCamModConfiguration.AspectRatioLabels[aspectIndex], 2000);
             }
-            else if (e.KeyCode == Keys.U)
+            else if (KeyBinds.ToggleGrid.Pressed(e))
             {
                 ruleOfThirdsEnabled = !ruleOfThirdsEnabled;
                 GTA.UI.Screen.ShowSubtitle("Rule of Thirds Grid " + (ruleOfThirdsEnabled ? "Enabled" : "Disabled"), 2000);
