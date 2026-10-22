@@ -8,7 +8,7 @@ namespace VRCam
 {
     public static class VRCamModConfiguration
     {
-        // Global switch for smoothing on shared mods.
+        // Turns the camera rat's position and rotation smoothing off (rigid follow).
         public static bool DisableSmoothing { get; set; } = false;
 
         // Viewfinder configuration.
@@ -20,11 +20,11 @@ namespace VRCam
         public static float ViewfinderSmoothingFactor { get; set; } = 0.1f;
         public static float AspectSmoothingFactor { get; set; } = 0.1f;
 
-        // Zoom settings.
+        // Viewfinder zoom levels.
         public static float DefaultZoom { get; set; } = 1.0f;
         public static float[] ZoomLevels { get; set; } = new float[] { 0.80f, 1.0f, 1.5f, 2.0f, 3.0f, 4.0f };
 
-        // Settings for rat attachment smoothing.
+        // Camera rat smoothing.
         public static float PositionalSmoothingFactor { get; set; } = 5.0f;
         public static float RotationSmoothingFactor { get; set; } = 0.1f;
 
@@ -39,6 +39,9 @@ namespace VRCam
         public static bool ZoomOutLocked { get; set; } = false;
         public static float SoftMinFOV { get; set; } = 45f;
         public static float SoftMaxFOV { get; set; } = 60f;
+        // Zoom range. The game accepts a camera FOV from 1 to 130 degrees.
+        public static float ZoomRangeMinFOV { get; set; } = 1f;
+        public static float ZoomRangeMaxFOV { get; set; } = 90f;
 
         // Flashlight settings
         public static float FlashlightOffsetX { get; set; } = 0.0f;
@@ -46,11 +49,78 @@ namespace VRCam
         public static float FlashlightOffsetZ { get; set; } = 0.0f;
         public static float FlashlightRotationX { get; set; } = 0.0f;
         public static bool FlashlightMovementLocked { get; set; } = true;
+        // "Follow VR view" places the flashlight from the rendered camera each tick (1:1 with the view), not from the
+        // smoothed rat, with its own offset (right, forward, up in metres). Not part of presets.
+        public static bool FlashlightFollowView { get; set; } = false;
+        public static float FlashlightViewOffsetX { get; set; } = 0.20f;
+        public static float FlashlightViewOffsetY { get; set; } = 0.35f;
+        public static float FlashlightViewOffsetZ { get; set; } = -0.15f;
+        // The torch prop's own light is only on at night (its model flags), so VRCam draws its own beam from the
+        // flashlight every frame. Brightness, range in metres, width = cone radius in degrees.
+        public static bool FlashlightBeam { get; set; } = true;
+        public static float FlashlightBrightness { get; set; } = 12f;
+        public static float FlashlightRange { get; set; } = 20f;
+        public static float FlashlightWidth { get; set; } = 30f;
+        public static bool FlashlightShadows { get; set; } = false;   // a shadowed light every frame costs frame rate
+        // Spot light edge: falloff (how far the edge fades out, higher = softer) and roundness (edge smoothness).
+        public static float FlashlightFeather { get; set; } = 1f;
+        public static float FlashlightRoundness { get; set; } = 0f;
+        // Camera Light: the same beam from the camera itself (no torch, no rat): height above the lens (cm) and a
+        // tilt (degrees, negative = down).
+        public static bool CameraLight { get; set; } = false;
+        // Draw the light from the Rockstar Editor's camera while the Editor is open.
+        public static bool EditorLight { get; set; } = true;
+        public static float CameraLightHeightCm { get; set; } = 5f;
+        public static float CameraLightPitch { get; set; } = -5f;
+        // Light presets as beam settings (brightness, range, width). The last entry, Custom, means the values were
+        // set by hand; choosing it changes nothing.
+        public static readonly string[] FlashlightPresetNames = { "Torch", "Bright", "Flood", "Spot", "Max", "Custom" };
+        private static readonly float[,] FlashlightPresetValues =
+            { { 12f, 20f, 30f }, { 25f, 35f, 30f }, { 20f, 25f, 60f }, { 40f, 60f, 12f }, { 50f, 100f, 30f } };
+        public static int FlashlightPreset
+        {
+            get
+            {
+                for (int i = 0; i < FlashlightPresetValues.GetLength(0); i++)
+                    if (Math.Abs(FlashlightBrightness - FlashlightPresetValues[i, 0]) < 0.05f &&
+                        Math.Abs(FlashlightRange - FlashlightPresetValues[i, 1]) < 0.5f &&
+                        Math.Abs(FlashlightWidth - FlashlightPresetValues[i, 2]) < 0.5f) return i;
+                return FlashlightPresetNames.Length - 1;
+            }
+        }
+        public static void SetFlashlightPreset(int i)
+        {
+            int n = FlashlightPresetValues.GetLength(0);
+            // "Custom" is not a preset: stepping onto it from a preset carries on round to the next preset
+            if (i == n) i = FlashlightPreset == 0 ? n - 1 : 0;
+            if (i < 0 || i >= n) return;
+            FlashlightBrightness = FlashlightPresetValues[i, 0];
+            FlashlightRange = FlashlightPresetValues[i, 1];
+            FlashlightWidth = FlashlightPresetValues[i, 2];
+            FlashlightBeam = true;
+            SaveSettingsOnly();
+        }
+
+        // Menu / HUD settings (the on-screen text is off by default; turn it on in the menu under HUD & Overlay)
+        public static bool ShowHudInfo { get; set; } = false;      // zoom/offset/status text
+        public static bool ShowControlsHelp { get; set; } = false; // right-side keybind list
+        public static int ZoomMode { get; set; } = 0;              // 0 wheel, 1 click, 2 mouse slide (not per preset)
+        public static bool BmxRiderEnabled { get; set; } = false;    // the Start key swaps control to an invisible BMX rider ped
+        public static bool FocusFollowsCamera { get; set; } = false; // keep streaming/LOD focus on the rendering camera
+        public static bool TraceLog { get; set; } = true;          // write VRcam_trace.log (diagnostics)
+        public static bool PadEnabled { get; set; } = true;        // gamepad layer (PadInput.cs)
+        public static int PadZoomMode { get; set; } = 1;           // see CameraZoom.PadZoomModeNames
+        public static float PadZoomSpeed { get; set; } = 0.6f;     // rate modes: FOV degrees per frame at full deflection (60 fps)
+        public static float PadDeadzone { get; set; } = 0.15f;
+        public static float PadDirectResponse { get; set; } = 0.35f; // direct pad modes: 0.05 soft .. 1 instant, same both ways
+        public static float SlideSensitivity { get; set; } = 0.35f; // mouse-slide zoom speed
+        public static bool AutoHidePistol { get; set; } = true;    // delete GTAVive's hand pistol prop when VR starts
+        public static bool ShowCompanionTip { get; set; } = true;  // one tip per game start when GTAVive is not loaded
 
         // Last used preset
         public static string LastPreset { get; set; } = "";
 
-        private const string IniPath = "VRcam.ini";
+        internal const string IniPath = "VRcam.ini";
 
         // Static constructor loads the INI file once at startup.
         static VRCamModConfiguration()
@@ -85,13 +155,111 @@ namespace VRCam
         /// </summary>
         public static void Save()
         {
+            SaveInternal(true, null);
+        }
+
+        /// <summary>
+        /// Saves settings and appends a preset under a user-chosen name
+        /// (falls back to the auto-generated name when empty).
+        /// </summary>
+        public static void Save(string customPresetName)
+        {
+            SaveInternal(true, customPresetName);
+        }
+
+        /// <summary>
+        /// Makes a string safe as an ini key: strips characters that would
+        /// break the line format.
+        /// </summary>
+        public static string SanitizePresetName(string name)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+                return "";
+            name = name.Trim();
+            foreach (char c in "=;[]")
+                name = name.Replace(c, '-');
+            if (name.Length > 60)
+                name = name.Substring(0, 60);
+            return name;
+        }
+
+        /// <summary>
+        /// Renames a preset in the ini. Returns false if the old name wasn't
+        /// found or the new name already exists.
+        /// </summary>
+        public static bool RenamePreset(string oldName, string newName)
+        {
+            newName = SanitizePresetName(newName);
+            if (string.IsNullOrEmpty(newName) || newName == oldName || !File.Exists(IniPath))
+                return false;
+
+            string[] lines = File.ReadAllLines(IniPath);
+            bool inSection = false, renamed = false;
+
+            // refuse a collision
+            foreach (var line in lines)
+            {
+                string t = line.Trim();
+                if (t.Contains("===== PRESETS =====")) { inSection = true; continue; }
+                if (!inSection || t.StartsWith(";")) continue;
+                int eq = t.IndexOf('=');
+                if (eq > 0 && t.Substring(0, eq).Trim() == newName)
+                    return false;
+            }
+
+            inSection = false;
+            for (int i = 0; i < lines.Length; i++)
+            {
+                string t = lines[i].Trim();
+                if (t.Contains("===== PRESETS =====")) { inSection = true; continue; }
+                if (!inSection || string.IsNullOrEmpty(t) || t.StartsWith(";")) continue;
+                int eq = t.IndexOf('=');
+                if (eq > 0 && t.Substring(0, eq).Trim() == oldName)
+                {
+                    lines[i] = newName + "=" + t.Substring(eq + 1).Trim();
+                    renamed = true;
+                    break;
+                }
+            }
+            if (!renamed)
+                return false;
+
+            // keep the LastPreset pointer in step
+            if (LastPreset == oldName)
+            {
+                LastPreset = newName;
+                for (int i = 0; i < lines.Length; i++)
+                {
+                    if (lines[i].Trim().StartsWith("LastPreset="))
+                    {
+                        lines[i] = "LastPreset=" + newName;
+                        break;
+                    }
+                }
+            }
+
+            File.WriteAllLines(IniPath, lines);
+            return true;
+        }
+
+        /// <summary>
+        /// Saves current settings without creating a new preset entry
+        /// (used by the menu so toggling options doesn't spam presets).
+        /// </summary>
+        public static void SaveSettingsOnly()
+        {
+            SaveInternal(false, null);
+        }
+
+        private static void SaveInternal(bool appendNewPreset, string customPresetName)
+        {
             try
             {
                 List<string> lines = new List<string>();
-                
+
                 // Write configuration settings
                 lines.Add("; VRCam Configuration File");
-                lines.Add("; Edit values and reload game or press Ctrl+F10 to apply");
+                lines.Add("; Edit values while the game is closed, or change them in the in-game menu (Ctrl+F5 by default).");
                 lines.Add("");
                 lines.Add("DisableSmoothing=" + DisableSmoothing.ToString().ToLower());
                 lines.Add("BaseWidth=" + BaseWidth.ToString("F2", CultureInfo.InvariantCulture));
@@ -115,6 +283,8 @@ namespace VRCam
                 lines.Add("ZoomOutLocked=" + ZoomOutLocked.ToString().ToLower());
                 lines.Add("SoftMinFOV=" + SoftMinFOV.ToString("F1", CultureInfo.InvariantCulture));
                 lines.Add("SoftMaxFOV=" + SoftMaxFOV.ToString("F1", CultureInfo.InvariantCulture));
+                lines.Add("ZoomRangeMinFOV=" + ZoomRangeMinFOV.ToString("F1", CultureInfo.InvariantCulture));
+                lines.Add("ZoomRangeMaxFOV=" + ZoomRangeMaxFOV.ToString("F1", CultureInfo.InvariantCulture));
                 lines.Add("");
                 lines.Add("; Flashlight Settings");
                 lines.Add("FlashlightOffsetX=" + FlashlightOffsetX.ToString("F3", CultureInfo.InvariantCulture));
@@ -122,13 +292,50 @@ namespace VRCam
                 lines.Add("FlashlightOffsetZ=" + FlashlightOffsetZ.ToString("F3", CultureInfo.InvariantCulture));
                 lines.Add("FlashlightRotationX=" + FlashlightRotationX.ToString("F1", CultureInfo.InvariantCulture));
                 lines.Add("FlashlightMovementLocked=" + FlashlightMovementLocked.ToString().ToLower());
+                lines.Add("; true = the flashlight follows the VR view 1:1 (rendered camera), not the camera rat");
+                lines.Add("FlashlightFollowView=" + FlashlightFollowView.ToString().ToLower());
+                lines.Add("FlashlightViewOffsetX=" + FlashlightViewOffsetX.ToString("F3", CultureInfo.InvariantCulture));
+                lines.Add("FlashlightViewOffsetY=" + FlashlightViewOffsetY.ToString("F3", CultureInfo.InvariantCulture));
+                lines.Add("FlashlightViewOffsetZ=" + FlashlightViewOffsetZ.ToString("F3", CultureInfo.InvariantCulture));
+                lines.Add("; VRCam's own flashlight beam (the prop's light is only on at night)");
+                lines.Add("FlashlightBeam=" + FlashlightBeam.ToString().ToLower());
+                lines.Add("FlashlightBrightness=" + FlashlightBrightness.ToString("F1", CultureInfo.InvariantCulture));
+                lines.Add("FlashlightRange=" + FlashlightRange.ToString("F0", CultureInfo.InvariantCulture));
+                lines.Add("FlashlightWidth=" + FlashlightWidth.ToString("F0", CultureInfo.InvariantCulture));
+                lines.Add("FlashlightShadows=" + FlashlightShadows.ToString().ToLower());
+                lines.Add("FlashlightFeather=" + FlashlightFeather.ToString("F1", CultureInfo.InvariantCulture));
+                lines.Add("FlashlightRoundness=" + FlashlightRoundness.ToString("F1", CultureInfo.InvariantCulture));
+                lines.Add("; Camera Light: the beam from the camera itself, no torch (height cm above the lens, pitch degrees)");
+                lines.Add("CameraLight=" + CameraLight.ToString().ToLower());
+                lines.Add("EditorLight=" + EditorLight.ToString().ToLower());
+                lines.Add("CameraLightHeightCm=" + CameraLightHeightCm.ToString("F0", CultureInfo.InvariantCulture));
+                lines.Add("CameraLightPitch=" + CameraLightPitch.ToString("F0", CultureInfo.InvariantCulture));
+                lines.Add("");
+                lines.Add("; Menu / HUD Settings");
+                lines.Add("ShowHudInfo=" + ShowHudInfo.ToString().ToLower());
+                lines.Add("ShowControlsHelp=" + ShowControlsHelp.ToString().ToLower());
+                lines.Add("ZoomMode=" + ZoomMode);
+                lines.Add("BmxRiderEnabled=" + BmxRiderEnabled.ToString().ToLower());
+                lines.Add("FocusFollowsCamera=" + FocusFollowsCamera.ToString().ToLower());
+                lines.Add("TraceLog=" + TraceLog.ToString().ToLower());
+                lines.Add("PadEnabled=" + PadEnabled.ToString().ToLower());
+                lines.Add("PadZoomMode=" + PadZoomMode);
+                lines.Add("PadZoomSpeed=" + PadZoomSpeed.ToString("F2", CultureInfo.InvariantCulture));
+                lines.Add("PadDeadzone=" + PadDeadzone.ToString("F2", CultureInfo.InvariantCulture));
+                lines.Add("PadDirectResponse=" + PadDirectResponse.ToString("F2", CultureInfo.InvariantCulture));
+                lines.Add("SlideSensitivity=" + SlideSensitivity.ToString("F2", CultureInfo.InvariantCulture));
+                lines.Add("AutoHidePistol=" + AutoHidePistol.ToString().ToLower());
+                lines.Add("; 1 = one tip per game start when the GTAVive VR mod is not loaded, 0 = never");
+                lines.Add("ShowCompanionTip=" + (ShowCompanionTip ? "1" : "0"));
                 lines.Add("");
                 lines.Add("; Last Used Preset");
                 lines.Add("LastPreset=" + LastPreset);
                 lines.Add("");
+                lines.AddRange(KeyBinds.IniLines());
+                lines.Add("");
                 lines.Add("; ===== PRESETS =====");
                 lines.Add("; Format: PresetName=FOV,ZoomInSmooth,ZoomOutSmooth,UseClick,ZoomInLock,ZoomOutLock,SoftMin,SoftMax,OffsetX,OffsetY,OffsetZ,RotationX,FlashLock");
-                
+
                 // Read all existing presets from the file so we don't lose them
                 Dictionary<string, string> existingPresets = new Dictionary<string, string>();
                 List<string> existingPresetOrder = new List<string>();
@@ -154,29 +361,34 @@ namespace VRCam
                     }
                 }
 
-                // Build the new preset entry
-                string presetName = GeneratePresetName();
-                string presetData = string.Format("{0},{1},{2},{3},{4},{5},{6},{7},{8},{9},{10},{11},{12}",
-                    CurrentFOV.ToString("F1", CultureInfo.InvariantCulture),
-                    ZoomInSmoothness.ToString("F2", CultureInfo.InvariantCulture),
-                    ZoomOutSmoothness.ToString("F2", CultureInfo.InvariantCulture),
-                    UseClickMode.ToString().ToLower(),
-                    ZoomInLocked.ToString().ToLower(),
-                    ZoomOutLocked.ToString().ToLower(),
-                    SoftMinFOV.ToString("F1", CultureInfo.InvariantCulture),
-                    SoftMaxFOV.ToString("F1", CultureInfo.InvariantCulture),
-                    FlashlightOffsetX.ToString("F3", CultureInfo.InvariantCulture),
-                    FlashlightOffsetY.ToString("F3", CultureInfo.InvariantCulture),
-                    FlashlightOffsetZ.ToString("F3", CultureInfo.InvariantCulture),
-                    FlashlightRotationX.ToString("F1", CultureInfo.InvariantCulture),
-                    FlashlightMovementLocked.ToString().ToLower());
-
-                // Write all old presets back, then append the new one
+                // Write all old presets back
                 foreach (string pName in existingPresetOrder)
                     lines.Add(pName + "=" + existingPresets[pName]);
-                lines.Add(presetName + "=" + presetData);
-                LastPreset = presetName;
-                
+
+                if (appendNewPreset)
+                {
+                    // Build and append the new preset entry
+                    string presetName = SanitizePresetName(customPresetName);
+                    if (string.IsNullOrEmpty(presetName) || existingPresets.ContainsKey(presetName))
+                        presetName = GeneratePresetName();
+                    string presetData = string.Format("{0},{1},{2},{3},{4},{5},{6},{7},{8},{9},{10},{11},{12}",
+                        CurrentFOV.ToString("F1", CultureInfo.InvariantCulture),
+                        ZoomInSmoothness.ToString("F2", CultureInfo.InvariantCulture),
+                        ZoomOutSmoothness.ToString("F2", CultureInfo.InvariantCulture),
+                        UseClickMode.ToString().ToLower(),
+                        ZoomInLocked.ToString().ToLower(),
+                        ZoomOutLocked.ToString().ToLower(),
+                        SoftMinFOV.ToString("F1", CultureInfo.InvariantCulture),
+                        SoftMaxFOV.ToString("F1", CultureInfo.InvariantCulture),
+                        FlashlightOffsetX.ToString("F3", CultureInfo.InvariantCulture),
+                        FlashlightOffsetY.ToString("F3", CultureInfo.InvariantCulture),
+                        FlashlightOffsetZ.ToString("F3", CultureInfo.InvariantCulture),
+                        FlashlightRotationX.ToString("F1", CultureInfo.InvariantCulture),
+                        FlashlightMovementLocked.ToString().ToLower());
+                    lines.Add(presetName + "=" + presetData);
+                    LastPreset = presetName;
+                }
+
                 File.WriteAllLines(IniPath, lines);
             }
             catch (Exception ex)
@@ -186,29 +398,35 @@ namespace VRCam
         }
 
         /// <summary>
-        /// Generates preset name in format: 35MM_FLSH125-000_16JAN26-1430
-        /// Where: 35MM = focal length, FLSH125 = XYZ (1 digit each), 000 = rotation degrees
+        /// Generates a preset name in the format {mm}MM_FLSH{x}{y}{z}-{rot}_{DDMMMYY-HHMM}:
+        /// focal length, flashlight offset X/Y/Z (whole numbers), pitch in degrees, save time.
         /// </summary>
         private static string GeneratePresetName()
         {
             int mm = FOVToMillimeter(CurrentFOV);
             DateTime now = DateTime.Now;
-            
+
             // Round X, Y, Z to nearest whole number (single digit format)
             int x = (int)Math.Round(Math.Abs(FlashlightOffsetX));
             int y = (int)Math.Round(Math.Abs(FlashlightOffsetY));
             int z = (int)Math.Round(Math.Abs(FlashlightOffsetZ));
             int rot = (int)Math.Round(Math.Abs(FlashlightRotationX));
-            
+
             // Clamp to single digits (0-9), but allow up to 2 digits if needed
             x = Math.Min(x, 99);
             y = Math.Min(y, 99);
             z = Math.Min(z, 99);
-            
+
             string date = now.ToString("ddMMMyy-HHmm", CultureInfo.InvariantCulture).ToUpper();
-            
-            // Format: 35MM_FLSH125-000_16JAN26-1430
+
             return string.Format("{0}MM_FLSH{1}{2}{3}-{4:000}_{5}", mm, x, y, z, rot, date);
+        }
+
+        private static bool ParseBool(string value, out bool result)
+        {
+            if (value == "1") { result = true; return true; }
+            if (value == "0") { result = false; return true; }
+            return bool.TryParse(value, out result);
         }
 
         /// <summary>
@@ -222,6 +440,7 @@ namespace VRCam
             string[] lines = File.ReadAllLines(path);
             Dictionary<string, string> presets = new Dictionary<string, string>();
             bool inPresetsSection = false;
+            bool inKeysSection = false;
 
             foreach (var line in lines)
             {
@@ -236,6 +455,12 @@ namespace VRCam
                     continue;
                 }
 
+                if (!inPresetsSection && trimmed.StartsWith("[") && trimmed.EndsWith("]"))
+                {
+                    inKeysSection = string.Equals(trimmed, "[Keys]", StringComparison.OrdinalIgnoreCase);
+                    continue;
+                }
+
                 int idx = trimmed.IndexOf('=');
                 if (idx < 0)
                     continue;
@@ -247,6 +472,12 @@ namespace VRCam
                 if (inPresetsSection)
                 {
                     presets[key] = value;
+                    continue;
+                }
+
+                if (inKeysSection)
+                {
+                    KeyBinds.LoadEntry(key, value);
                     continue;
                 }
 
@@ -311,7 +542,7 @@ namespace VRCam
                             ZoomOutSmoothness = fVal;
                         break;
                     case "CurrentFOV":
-                        if (float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out fVal))
+                        if (float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out fVal) && !float.IsNaN(fVal) && !float.IsInfinity(fVal))
                             CurrentFOV = fVal;
                         break;
                     case "UseClickMode":
@@ -334,6 +565,14 @@ namespace VRCam
                         if (float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out fVal))
                             SoftMaxFOV = fVal;
                         break;
+                    case "ZoomRangeMinFOV":
+                        if (float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out fVal) && !float.IsNaN(fVal) && !float.IsInfinity(fVal))
+                            ZoomRangeMinFOV = fVal;
+                        break;
+                    case "ZoomRangeMaxFOV":
+                        if (float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out fVal) && !float.IsNaN(fVal) && !float.IsInfinity(fVal))
+                            ZoomRangeMaxFOV = fVal;
+                        break;
                     case "FlashlightOffsetX":
                         if (float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out fVal))
                             FlashlightOffsetX = fVal;
@@ -353,6 +592,107 @@ namespace VRCam
                     case "FlashlightMovementLocked":
                         if (bool.TryParse(value, out bVal))
                             FlashlightMovementLocked = bVal;
+                        break;
+                    case "FlashlightFollowView":
+                        if (bool.TryParse(value, out bVal))
+                            FlashlightFollowView = bVal;
+                        break;
+                    case "FlashlightViewOffsetX":
+                        if (float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out fVal))
+                            FlashlightViewOffsetX = fVal;
+                        break;
+                    case "FlashlightViewOffsetY":
+                        if (float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out fVal))
+                            FlashlightViewOffsetY = fVal;
+                        break;
+                    case "FlashlightViewOffsetZ":
+                        if (float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out fVal))
+                            FlashlightViewOffsetZ = fVal;
+                        break;
+                    case "FlashlightBeam":
+                        if (bool.TryParse(value, out bVal)) FlashlightBeam = bVal;
+                        break;
+                    case "FlashlightBrightness":
+                        if (float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out fVal))
+                            FlashlightBrightness = Math.Max(0.5f, Math.Min(50f, fVal));
+                        break;
+                    case "FlashlightRange":
+                        if (float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out fVal))
+                            FlashlightRange = Math.Max(5f, Math.Min(150f, fVal));
+                        break;
+                    case "FlashlightWidth":
+                        if (float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out fVal))
+                            FlashlightWidth = Math.Max(5f, Math.Min(80f, fVal));
+                        break;
+                    case "FlashlightShadows":
+                        if (bool.TryParse(value, out bVal)) FlashlightShadows = bVal;
+                        break;
+                    case "FlashlightFeather":
+                        if (float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out fVal))
+                            FlashlightFeather = Math.Max(0.1f, Math.Min(20f, fVal));
+                        break;
+                    case "FlashlightRoundness":
+                        if (float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out fVal))
+                            FlashlightRoundness = Math.Max(0f, Math.Min(80f, fVal));
+                        break;
+                    case "EditorLight":
+                        if (bool.TryParse(value, out bVal)) EditorLight = bVal;
+                        break;
+                    case "CameraLight":
+                        if (bool.TryParse(value, out bVal)) CameraLight = bVal;
+                        break;
+                    case "CameraLightHeightCm":
+                        if (float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out fVal))
+                            CameraLightHeightCm = Math.Max(-30f, Math.Min(30f, fVal));
+                        break;
+                    case "CameraLightPitch":
+                        if (float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out fVal))
+                            CameraLightPitch = Math.Max(-45f, Math.Min(45f, fVal));
+                        break;
+                    case "ShowHudInfo":
+                        if (bool.TryParse(value, out bVal))
+                            ShowHudInfo = bVal;
+                        break;
+                    case "ShowControlsHelp":
+                        if (bool.TryParse(value, out bVal))
+                            ShowControlsHelp = bVal;
+                        break;
+                    case "BmxRiderEnabled":
+                        if (bool.TryParse(value, out bVal)) BmxRiderEnabled = bVal;
+                        break;
+                    case "FocusFollowsCamera":
+                        if (bool.TryParse(value, out bVal)) FocusFollowsCamera = bVal;
+                        break;
+                    case "TraceLog":
+                        if (bool.TryParse(value, out bVal)) TraceLog = bVal;
+                        break;
+                    case "PadEnabled":
+                        if (bool.TryParse(value, out bVal)) PadEnabled = bVal;
+                        break;
+                    case "PadZoomMode":
+                        int pzm; if (int.TryParse(value, out pzm)) PadZoomMode = Math.Max(0, Math.Min(5, pzm));
+                        break;
+                    case "PadZoomSpeed":
+                        float pzs; if (float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out pzs)) PadZoomSpeed = pzs;
+                        break;
+                    case "PadDeadzone":
+                        float pdz; if (float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out pdz)) PadDeadzone = Math.Max(0.02f, Math.Min(0.6f, pdz));
+                        break;
+                    case "PadDirectResponse":
+                        float pdr; if (float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out pdr)) PadDirectResponse = Math.Max(0.02f, Math.Min(1f, pdr));
+                        break;
+                    case "ZoomMode":
+                        int zm; if (int.TryParse(value, out zm)) ZoomMode = Math.Max(0, Math.Min(2, zm));
+                        break;
+                    case "SlideSensitivity":
+                        float ss; if (float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out ss)) SlideSensitivity = ss;
+                        break;
+                    case "AutoHidePistol":
+                        if (bool.TryParse(value, out bVal))
+                            AutoHidePistol = bVal;
+                        break;
+                    case "ShowCompanionTip":
+                        if (ParseBool(value, out bVal)) ShowCompanionTip = bVal;
                         break;
                     case "LastPreset":
                         LastPreset = value;
@@ -402,7 +742,7 @@ namespace VRCam
                 if (bool.TryParse(parts[12], out bool flashLock))
                     FlashlightMovementLocked = flashLock;
             }
-            else if (parts.Length >= 8) // Legacy format support
+            else if (parts.Length >= 8) // older 8-field preset format
             {
                 if (float.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture, out float fov))
                     CurrentFOV = fov;
@@ -429,13 +769,13 @@ namespace VRCam
         public static List<string> GetPresetNames()
         {
             List<string> presets = new List<string>();
-            
+
             if (!File.Exists(IniPath))
                 return presets;
 
             string[] lines = File.ReadAllLines(IniPath);
             bool inPresetsSection = false;
-            
+
             foreach (var line in lines)
             {
                 string trimmed = line.Trim();
@@ -474,7 +814,7 @@ namespace VRCam
 
             string[] lines = File.ReadAllLines(IniPath);
             bool inPresetsSection = false;
-            
+
             foreach (var line in lines)
             {
                 string trimmed = line.Trim();

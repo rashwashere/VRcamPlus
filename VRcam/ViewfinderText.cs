@@ -90,11 +90,18 @@ namespace VRCam
             Function.Call(Hash.BEGIN_TEXT_COMMAND_DISPLAY_TEXT, "STRING");
             Function.Call(Hash.ADD_TEXT_COMPONENT_SUBSTRING_PLAYER_NAME, infoText);
             Function.Call(Hash.END_TEXT_COMMAND_DISPLAY_TEXT, textPosX, textPosY);
-            
+
             // Also display zoom info and rat info from other scripts
-            DisplayZoomInfo();
-            DisplayRatInfo();
-            DisplayHelpMenu();
+            // (each block can be turned on or off in the menu under HUD & Overlay)
+            if (VRCamModConfiguration.ShowHudInfo)
+            {
+                DisplayZoomInfo();
+                DisplayRatInfo();
+            }
+            if (VRCamModConfiguration.ShowControlsHelp)
+            {
+                DisplayHelpMenu();
+            }
         }
 
         private void DisplayZoomInfo()
@@ -102,7 +109,7 @@ namespace VRCam
             float currentFov = CameraZoom.CurrentFOV;
             float minFov = CameraZoom.MinFOV;
             float maxFov = CameraZoom.MaxFOV;
-            float zoomPercent = ((maxFov - currentFov) / (maxFov - minFov)) * 100f;
+            float zoomPercent = CameraZoom.FovToSlider(currentFov, maxFov, minFov) * 100f;   // on the zoom curve
             string cameraMode = CameraZoom.UseClickMode ? "Click" : "Scroll";
             int mm = VRCamModConfiguration.FOVToMillimeter(currentFov);
             
@@ -164,18 +171,19 @@ namespace VRCam
             float headerSize = 0.27f;
             
             DrawText("--- Main Controls ---", rightMargin, startY, headerSize, 255, 255, 100, 255, false);
-            DrawText($"{KeyBinds.UI_ToggleUI} = Toggle All UI & Viewfinder", rightMargin, startY + lineHeight * 1, textSize, 255, 255, 255, 255, false);
-            DrawText($"{KeyBinds.UI_ShowHideRat} = Show/Hide Rat", rightMargin, startY + lineHeight * 2, textSize, 255, 255, 255, 255, false);
-            DrawText($"{KeyBinds.UI_LockUnlockControls} = Lock/Unlock All Controls", rightMargin, startY + lineHeight * 3, textSize, 255, 255, 255, 255, false);
-            DrawText($"{KeyBinds.UI_SavePreset} = Save Preset", rightMargin, startY + lineHeight * 4, textSize, 255, 255, 255, 255, false);
-            DrawText($"{KeyBinds.UI_CyclePresets} = Cycle Presets", rightMargin, startY + lineHeight * 5, textSize, 255, 255, 255, 255, false);
+            DrawText($"{KeyBinds.UI_OpenMenu} = Open Menu", rightMargin, startY + lineHeight * 0.9f, textSize, 100, 255, 100, 255, false);
+            DrawText($"{KeyBinds.UI_ToggleUI} = Start / Toggle Viewfinder", rightMargin, startY + lineHeight * 1.8f, textSize, 255, 255, 255, 255, false);
+            DrawText($"{KeyBinds.UI_ShowHideRat} = Show/Hide Rat", rightMargin, startY + lineHeight * 2.7f, textSize, 255, 255, 255, 255, false);
+            DrawText($"{KeyBinds.UI_LockUnlockControls} = Lock/Unlock All Controls", rightMargin, startY + lineHeight * 3.6f, textSize, 255, 255, 255, 255, false);
+            DrawText($"{KeyBinds.UI_SavePreset} = Save Preset", rightMargin, startY + lineHeight * 4.5f, textSize, 255, 255, 255, 255, false);
+            DrawText($"{KeyBinds.UI_CyclePresets} = Cycle Presets", rightMargin, startY + lineHeight * 5.4f, textSize, 255, 255, 255, 255, false);
             
             DrawText("--- Flashlight Controls ---", rightMargin, startY + lineHeight * 6.5f, headerSize, 255, 255, 100, 255, false);
             DrawText($"{KeyBinds.UI_ToggleFlashlight} = Toggle Flashlight", rightMargin, startY + lineHeight * 7.5f, textSize, 255, 255, 255, 255, false);
             DrawText($"{KeyBinds.UI_FlashlightLock} = Lock/Unlock Movement", rightMargin, startY + lineHeight * 8.5f, textSize, 100, 255, 100, 255, false);
-            DrawText($"{KeyBinds.UI_FlashlightMove} = Move Forward/Back (X)", rightMargin, startY + lineHeight * 9.5f, textSize, 255, 255, 255, 255, false);
-            DrawText($"{KeyBinds.UI_FlashlightMoveLeftRight} = Move Left/Right (Z)", rightMargin, startY + lineHeight * 10.5f, textSize, 255, 255, 255, 255, false);
-            DrawText($"{KeyBinds.UI_FlashlightMoveUpDown} = Move Up/Down (Y)", rightMargin, startY + lineHeight * 11.5f, textSize, 255, 255, 255, 255, false);
+            DrawText($"{KeyBinds.UI_FlashlightMove} = Move Forward/Back (Y)", rightMargin, startY + lineHeight * 9.5f, textSize, 255, 255, 255, 255, false);
+            DrawText($"{KeyBinds.UI_FlashlightMoveLeftRight} = Move Left/Right (X)", rightMargin, startY + lineHeight * 10.5f, textSize, 255, 255, 255, 255, false);
+            DrawText($"{KeyBinds.UI_FlashlightMoveUpDown} = Move Up/Down (Z)", rightMargin, startY + lineHeight * 11.5f, textSize, 255, 255, 255, 255, false);
             DrawText($"{KeyBinds.UI_FlashlightRotate} = Rotate Pitch", rightMargin, startY + lineHeight * 12.5f, textSize, 255, 255, 255, 255, false);
             
             DrawText("--- Zoom Controls ---", rightMargin, startY + lineHeight * 14f, headerSize, 255, 255, 100, 255, false);
