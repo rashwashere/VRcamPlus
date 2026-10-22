@@ -15,13 +15,17 @@ namespace VRCam
     ///
     /// IsArmed: GTAVive currently renders the VR view. Two sources, in this order:
     ///  1. The shared-memory flag Local\gtavive_cam_v1, when GTAVive publishes it: magic 'VRC1' @0, version 1 @4,
-    ///     process id @8, armed @12, heartbeat in GetTickCount64 milliseconds @16, settings menu open @24.
+    ///     process id @8, armed @12, heartbeat in GetTickCount64 milliseconds @16, settings menu open @24,
+    ///     menu link (u16, 1 = GTAVive opens its menu when VRCam asks) @28, back-to-VRCam counter (u16) @30.
     ///  2. Otherwise, with GTAVive.asi loaded: a scripted camera is rendering and the player ped is hidden
     ///     (GTAVive hides the body in VR: invisible on foot, alpha 0 in a vehicle).
     /// Without GTAVive, IsArmed is always false.
     ///
     /// EnterVrBind: GTAVive's own Enter VR key, so VRCam can react to it (hand pistol hiding, BMX rider swap)
     /// without binding that key itself.
+    ///
+    /// Menu link: IsMenuLinkAvailable shows the "GTAVR Settings" row; BackToVrcamCounter changes when GTAVive's
+    /// menu, opened from that row, is left with Back / Esc on its main page. VRCam's own block is VrCamState.
     /// </summary>
     public static class GtaViveArmedFlag
     {
@@ -116,6 +120,44 @@ namespace VRCam
             {
                 return false;
             }
+        }
+
+        /// <summary>
+        /// GTAVive runs and opens its settings menu when VRCam asks (link field @28 = 1). False without GTAVive,
+        /// with a stopped GTAVive, or with a GTAVive build without the menu link.
+        /// </summary>
+        public static bool IsMenuLinkAvailable()
+        {
+            try
+            {
+                return IsBlockFresh() && view.ReadUInt16(28) == 1;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        /// <summary>GTAVive's back-to-VRCam counter (@30), or -1 while the block is not valid.</summary>
+        public static int BackToVrcamCounter()
+        {
+            try
+            {
+                return IsBlockFresh() ? view.ReadUInt16(30) : -1;
+            }
+            catch
+            {
+                return -1;
+            }
+        }
+
+        // The block is published by GTAVive in this process and its heartbeat is under 2 seconds old
+        private static bool IsBlockFresh()
+        {
+            if (ReadSharedFlag() < 0 || view == null)
+                return false;
+            ulong now = GetTickCount64(), beat = view.ReadUInt64(16);
+            return now >= beat && now - beat < 2000;
         }
 
         public static bool IsArmed()

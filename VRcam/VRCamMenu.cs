@@ -18,6 +18,13 @@ namespace VRCam
     // in the GTA on-screen input box, Backspace = back, Esc = back
     // (closes only from the root page). Opens with the OpenMenu key
     // (Ctrl+F5 by default).
+    //
+    // With GTAVive running, the root page starts with "GTAVR Settings":
+    // it closes this menu and asks GTAVive to open its own settings menu
+    // (VrCamState). Back / Esc on GTAVive's main page opens this menu
+    // again (GtaViveArmedFlag.BackToVrcamCounter). While GTAVive's menu
+    // is open this menu stays closed. When both menu keys are the same,
+    // GTAVive leaves that key to VRCam, so one key opens one menu.
     // ================================================================
 
     public enum MenuItemKind { Button, Toggle, Float, Choice, Submenu }
@@ -297,6 +304,16 @@ namespace VRCam
         private readonly Stack<MenuPage> pageStack = new Stack<MenuPage>();
         private MenuPage root;
 
+        // GTAVive menu link: the root row shown only while GTAVive offers it, the last back-to-VRCam counter seen
+        // (-1 = none yet), and until when the game's menu controls stay blocked while GTAVive opens its menu
+        private MenuItem gtavrRow;
+        private int lastBackCounter = -1;
+        private int handoffUntil = 0;
+        // GTAVive's menu state at the last tick, and until when the menu key does not open this menu after
+        // GTAVive's menu closed (the key press that closed it must not open this one)
+        private bool gtaviveMenuWasOpen = false;
+        private int menuKeyQuietUntil = 0;
+
         private string[] presetCache = new string[0];
         private int presetIndex = -1;
 
@@ -322,6 +339,7 @@ namespace VRCam
             BuildMenu();
             Tick += OnTick;
             KeyDown += OnKeyDown;
+            Aborted += (s, e) => VrCamState.Stop();
         }
 
         public static void PlayNavSound(string name)
@@ -665,6 +683,9 @@ namespace VRCam
 
             // --- Root ---
             // The most used rows sit on the first page; everything else is in the sub-menus below them.
+            // The GTAVR Settings row is put first by SyncGtavrRow while GTAVive offers its menu.
+            gtavrRow = new ActionItem("GTAVR Settings", OpenGtavrMenu,
+                "Opens the GTAVR settings menu: gameplay, stabilizer, keys and VR actions. Backspace or Esc on its main page comes back here.");
             root = new MenuPage("VRCam", "MAIN MENU");
             root.Items.Add(new ToggleItem("Flashlight",
                 () => AttachRatToCamera.FlashlightVisible,
@@ -722,18 +743,50 @@ namespace VRCam
         {
             pageStack.Clear();
             root.OnOpen?.Invoke();
+            SyncGtavrRow();
             pageStack.Push(root);   // root keeps its previous cursor
             IsOpen = true;
         }
 
-        private void Close()
+        private void Close(bool sound = true)
         {
             captureDef = null;
             pageStack.Clear();
             IsOpen = false;
             ignoreKeysUntil = Game.GameTime + 200;
-            PlayNavSound("BACK");
+            if (sound)
+                PlayNavSound("BACK");
             VRCamModConfiguration.SaveSettingsOnly();
+        }
+
+        // Shows the GTAVR Settings row first on the root page while GTAVive offers its menu, and hides it otherwise;
+        // the cursor stays on the same row
+        private void SyncGtavrRow()
+        {
+            bool want = GtaViveArmedFlag.IsMenuLinkAvailable();
+            bool has = root.Items.Count > 0 && root.Items[0] == gtavrRow;
+            if (want == has)
+                return;
+            if (want)
+            {
+                root.Items.Insert(0, gtavrRow);
+                root.SelectedIndex++;
+            }
+            else
+            {
+                root.Items.RemoveAt(0);
+                root.SelectedIndex = Math.Max(0, root.SelectedIndex - 1);
+            }
+        }
+
+        // GTAVR Settings row: this menu closes and GTAVive opens its settings menu on its next tick
+        private void OpenGtavrMenu()
+        {
+            if (!GtaViveArmedFlag.IsMenuLinkAvailable())
+                return;
+            VrCamState.RequestGtavrMenu();
+            Close(false);
+            handoffUntil = Game.GameTime + 500;
         }
 
         private void GoBack()
@@ -753,12 +806,14 @@ namespace VRCam
         {
             typing = true;
             string result;
+            VrCamState.BeginInputBox();
             try
             {
                 result = Game.GetUserInput(WindowTitle.EnterMessage60, defaultText, 15);
             }
             finally
             {
+                VrCamState.EndInputBox();
                 typing = false;
                 ignoreKeysUntil = Game.GameTime + 300;
             }
@@ -816,7 +871,7 @@ namespace VRCam
 
             if (!IsOpen)
             {
-                if (KeyBinds.OpenMenu.Pressed(e))
+                if (KeyBinds.OpenMenu.Pressed(e) && !gtaviveMenuWasOpen && Game.GameTime >= menuKeyQuietUntil)
                     Open();
                 return;
             }
@@ -941,19 +996,80 @@ namespace VRCam
 
         private void OnTick(object sender, EventArgs e)
         {
+            bool gtaviveMenuOpen = GtaViveArmedFlag.IsMenuOpen();
+            if (gtaviveMenuWasOpen && !gtaviveMenuOpen)
+                menuKeyQuietUntil = Game.GameTime + 300;
+            gtaviveMenuWasOpen = gtaviveMenuOpen;
+
             if (openRequested)
             {
                 openRequested = false;
-                if (!IsOpen && !typing)
+                if (!IsOpen && !typing && !gtaviveMenuOpen)
                 {
                     Open();
                     ignoreKeysUntil = Game.GameTime + 250; // the A that opened it must not also "accept"
                 }
             }
 
+            // GTAVive's menu, opened from the GTAVR Settings row, was left with Back / Esc on its main page:
+            // this menu opens again on that row
+            int back = GtaViveArmedFlag.BackToVrcamCounter();
+            if (back < 0 || lastBackCounter < 0)
+                lastBackCounter = back;
+            else if (back != lastBackCounter)
+            {
+                lastBackCounter = back;
+                if (!IsOpen && !typing && !gtaviveMenuOpen)
+                {
+                    Open();
+                    root.SelectedIndex = 0;
+                    ignoreKeysUntil = Game.GameTime + 250; // the Backspace / Esc that left GTAVive's menu must not act here
+                    PlayNavSound("BACK");
+                }
+            }
+
+            // One menu at a time: GTAVive's menu opened on its own key while this one is open
+            if (IsOpen && gtaviveMenuOpen && !typing)
+                Close(false);
+
+            VrCamState.Publish(KeyBinds.OpenMenu.Bind, IsOpen || typing);
+
+            if (!IsOpen || pageStack.Count == 0)
+            {
+                // GTAVR Settings was selected: the game's menu controls stay blocked until GTAVive's menu is open
+                if (handoffUntil != 0)
+                {
+                    if (gtaviveMenuOpen || Game.GameTime >= handoffUntil)
+                        handoffUntil = 0;
+                    else
+                        BlockMenuControls();
+                }
+                return;
+            }
+
+            SyncGtavrRow();
+            BlockMenuControls();
+
+            // While a key is being captured the frontend controls must not move the cursor or adjust rows
+            if (captureDef == null)
+                HandleInput();
+
             if (!IsOpen || pageStack.Count == 0)
                 return;
 
+            MenuPage page = pageStack.Peek();
+
+            // clamp scroll window
+            if (page.SelectedIndex < page.ScrollOffset)
+                page.ScrollOffset = page.SelectedIndex;
+            if (page.SelectedIndex >= page.ScrollOffset + MaxVisibleRows)
+                page.ScrollOffset = page.SelectedIndex - MaxVisibleRows + 1;
+
+            Draw(page);
+        }
+
+        private void BlockMenuControls()
+        {
             // Suppress only the controls the menu consumes plus the "escape
             // sideways" actions - movement/look stay enabled.
             int[] disable = {
@@ -985,23 +1101,6 @@ namespace VRCam
 
             foreach (int c in disable)
                 Function.Call(Hash.DISABLE_CONTROL_ACTION, 0, c, true);
-
-            // While a key is being captured the frontend controls must not move the cursor or adjust rows
-            if (captureDef == null)
-                HandleInput();
-
-            if (!IsOpen || pageStack.Count == 0)
-                return;
-
-            MenuPage page = pageStack.Peek();
-
-            // clamp scroll window
-            if (page.SelectedIndex < page.ScrollOffset)
-                page.ScrollOffset = page.SelectedIndex;
-            if (page.SelectedIndex >= page.ScrollOffset + MaxVisibleRows)
-                page.ScrollOffset = page.SelectedIndex - MaxVisibleRows + 1;
-
-            Draw(page);
         }
 
         // ------------------------------------------------------------

@@ -45,12 +45,13 @@ Only the menu key and the Start key work before VRCam has started; the viewfinde
 
 **Gamepad**: hold D-pad Right and press A to open the menu, B goes back. On foot: LB = flashlight, RB = lock / unlock the flashlight position, D-pad = move the unlocked flashlight. Right stick or triggers zoom (Controller page).
 
-The default keys do not overlap GTAVR: Legacy's default keys (Ctrl+F6, Ctrl+L, Ctrl+Shift+L, Ctrl+Shift+C, 1, 2, U and the Ctrl+Shift stabilizer keys).
+GTAVR: Legacy opens its settings menu with Ctrl+F5 too, and the two share one menu (see Menu below). The other default keys do not overlap GTAVR: Legacy's default keys (Ctrl+L, Ctrl+Shift+L, Ctrl+Shift+C, 1, 2, U and the Ctrl+Shift stabilizer keys).
 
 ## Menu
 
 Ctrl+F5 opens it. The menu is driven by the game's own menu controls (arrow keys, Enter, Backspace, Esc, or the gamepad D-pad, A and B), so navigation always works whatever the key binds. Up / Down select a row, Left / Right change a value (hold to speed up), Enter toggles, opens a page or lets you type an exact value, Backspace or Esc goes back. Pages:
 
+- **GTAVR Settings** (first row, only with GTAVR installed): opens GTAVR's settings menu (gameplay, stabilizer, keys, VR actions; keyboard only). Backspace or Esc on its main page comes back here, and Ctrl+F5 closes everything. When both menu keys are the same (Ctrl+F5 by default), the key always opens this menu first; with different keys each key opens its own menu.
 - **Main**: flashlight, flashlight follows the VR view, light preset, camera light.
 - **Camera**: FOV, zoom range (down to FOV 1, up to 130), zoom smoothness, zoom mode, slide sensitivity, soft zoom locks.
 - **Flashlight**: on / off, movement lock, follow VR view 1:1, offsets and pitch, beam on / off, light presets (Torch, Bright, Flood, Spot, Max), brightness, range, width, shadows, edge softness and roundness, camera light (height, tilt) and the light in the Rockstar Editor.
